@@ -149,3 +149,116 @@ export async function sendEstimate(req, res, next) {
     next(e);
   }
 }
+export async function updateEstimate(req, res, next) {
+  let filePath;
+
+  try {
+    const { id } = req.params;
+    const { clientId } = req.body;
+
+    const estimate = await Estimate.findById(id);
+
+    if (!estimate) {
+      return res.status(404).json({
+        success: false,
+        message: "Estimate not found",
+      });
+    }
+
+    // Validate client if provided
+    let client = null;
+
+    if (clientId) {
+      client = await Client.findById(clientId);
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message: "Client not found",
+        });
+      }
+    } else {
+      client = await Client.findById(estimate.client);
+    }
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found",
+      });
+    }
+
+    // Recalculate all totals
+    const totals = validateTotals(req.body);
+
+    // Update estimate details
+    estimate.client = client._id;
+    estimate.items = totals.items;
+    estimate.subtotal = totals.subtotal;
+    estimate.discountPercent = totals.discountPercent;
+    estimate.discountAmount = totals.discountAmount;
+    estimate.gstRate = totals.gstRate;
+    estimate.tax = totals.tax;
+    estimate.total = totals.total;
+    estimate.notes = totals.notes;
+    estimate.terms = totals.terms;
+
+    // Regenerate PDF with updated details
+    const pdf = await generateEstimatePdf(estimate, client);
+    filePath = pdf.filePath;
+
+    let pdfUrl = pdf.publicUrl;
+    let pdfPublicId = estimate.pdfPublicId || "";
+
+    const uploaded = await uploadPdf(
+      filePath,
+      estimate.estimateNumber,
+    );
+
+    if (uploaded) {
+      pdfUrl = uploaded.url;
+      pdfPublicId = uploaded.publicId;
+    }
+
+    estimate.pdfUrl = pdfUrl;
+    estimate.pdfPublicId = pdfPublicId;
+
+    await estimate.save();
+
+    return res.status(200).json({
+      success: true,
+      data: estimate,
+      message: "Estimate updated successfully",
+    });
+  } catch (error) {
+    next(error);
+  } finally {
+    if (filePath) {
+      await removeTempFile(filePath).catch(() => {});
+    }
+  }
+}
+
+export async function deleteEstimate(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const estimate = await Estimate.findById(id);
+
+    if (!estimate) {
+      return res.status(404).json({
+        success: false,
+        message: "Estimate not found",
+      });
+    }
+
+    await Estimate.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Estimate deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
