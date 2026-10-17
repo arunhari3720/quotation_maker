@@ -1,158 +1,515 @@
+
 import fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const FONT_REGULAR = path.resolve(
+  __dirname,
+  "../assets/font/NotoSansTamil-Bold.ttf"
+);
+
+const FONT_BOLD = path.resolve(
+  __dirname,
+  "../assets/font/NotoSansTamil-Bold.ttf"
+);
+
+const COLORS = {
+  navy: "#24364B",
+  orange: "#F47B35",
+  text: "#334155",
+  muted: "#64748B",
+  border: "#E2E8F0",
+  light: "#F5F7FA",
+  white: "#FFFFFF",
+};
+
 const money = (n) =>
-  `Rs. ${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  `Rs. ${Number(n || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const dateFormat = (date) =>
+  new Date(date || Date.now()).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
 export async function generateEstimatePdf(estimate, client) {
   const dir = path.resolve("uploads/estimates");
+
   await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, `${estimate.estimateNumber}.pdf`);
+
+  // Check font files before creating the PDF.
+  await fs.access(FONT_REGULAR);
+  await fs.access(FONT_BOLD);
+
+  const filePath = path.join(
+    dir,
+    `${estimate.estimateNumber}.pdf`
+  );
+
   await new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 48 });
-    const stream = doc.pipe(awaitImportFs().createWriteStream(filePath));
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-    doc.on("error", reject);
-    doc.rect(0, 0, doc.page.width, 115).fill("#24364B");
-    doc
-      .fillColor("#F47B35")
-      .fontSize(23)
-      .font("Helvetica-Bold")
-      .text("MS", 48, 34, { continued: true });
-    doc.fillColor("#FFFFFF").fontSize(19).text(" Painting Works");
-    doc
-      .fillColor("#DCE5EF")
-      .fontSize(9)
-      .font("Helvetica")
-      .text("PROFESSIONAL PAINTING SERVICES", 50, 69);
-    doc
-      .fillColor("#24364B")
-      .fontSize(22)
-      .font("Helvetica-Bold")
-      .text("ESTIMATE", 48, 140);
-    doc
-      .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#64748B")
-      .text(`Estimate No: ${estimate.estimateNumber}`, 350, 145, {
-        width: 195,
-        align: "right",
-      });
-    doc.text(
-      `Date: ${new Date(estimate.createdAt || Date.now()).toLocaleDateString("en-IN")}`,
-      350,
-      160,
-      { width: 195, align: "right" },
-    );
-    doc.moveTo(48, 185).lineTo(547, 185).strokeColor("#E5EAF0").stroke();
-    doc
-      .fillColor("#F47B35")
-      .font("Helvetica-Bold")
-      .fontSize(9)
-      .text("PREPARED FOR", 48, 203);
-    doc.fillColor("#24364B").fontSize(12).text(client.name, 48, 220);
-    doc
-      .font("Helvetica")
-      .fontSize(9)
-      .fillColor("#64748B")
-      .text(client.phone, 48, 239);
-    if (client.email) doc.text(client.email, 48, 253);
-    if (client.address) doc.text(client.address, { width: 260 });
-    let y = 292;
-    doc.fillColor("#24364B").rect(48, y, 499, 28).fill();
-    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(8);
-    doc.text("DESCRIPTION", 58, y + 10);
-    doc.text("AREA (SQ FT)", 300, y + 10, { width: 75, align: "right" });
-    doc.text("RATE", 385, y + 10, { width: 55, align: "right" });
-    doc.text("AMOUNT", 455, y + 10, { width: 82, align: "right" });
-    y += 28;
-    estimate.items.forEach((item, i) => {
-      if (i % 2 === 0) doc.fillColor("#F7F9FC").rect(48, y, 499, 32).fill();
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: {
+        top: 42,
+        bottom: 55,
+        left: 48,
+        right: 48,
+      },
+      bufferPages: true,
+      info: {
+        Title: `Estimate ${estimate.estimateNumber}`,
+        Author: "MS Painting Works",
+        Subject: "Painting Works Quotation",
+      },
+    });
+
+    const stream = doc.pipe(createWriteStream(filePath));
+
+    let finished = false;
+
+    const fail = (error) => {
+      if (finished) return;
+      finished = true;
+      reject(error);
+    };
+
+    stream.on("finish", () => {
+      if (finished) return;
+      finished = true;
+      resolve();
+    });
+
+    stream.on("error", fail);
+    doc.on("error", fail);
+
+    // Register embedded Unicode fonts.
+    doc.registerFont("Tamil", FONT_REGULAR);
+    doc.registerFont("TamilBold", FONT_BOLD);
+
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const left = 48;
+    const right = pageWidth - 48;
+    const contentWidth = right - left;
+    const bottomLimit = pageHeight - 66;
+
+    // Consistent text helpers.
+    const text = (value, x, y, options = {}) => {
       doc
-        .fillColor("#334155")
-        .font("Helvetica")
-        .fontSize(9)
-        .text(item.description, 58, y + 11, { width: 225 });
-      doc.text(Number(item.area).toLocaleString("en-IN"), 300, y + 11, {
+        .font(options.bold ? "TamilBold" : "Tamil")
+        .fontSize(options.size || 9)
+        .fillColor(options.color || COLORS.text)
+        .text(String(value ?? ""), x, y, {
+          width: options.width,
+          align: options.align || "left",
+          lineGap: options.lineGap ?? 2,
+          ...options.extra,
+        });
+    };
+
+    const sectionTitle = (title, y) => {
+      doc
+        .roundedRect(left, y, 4, 15, 2)
+        .fill(COLORS.orange);
+
+      text(title, left + 12, y - 1, {
+        bold: true,
+        size: 10,
+        color: COLORS.navy,
+      });
+
+      return y + 24;
+    };
+
+    // Premium first-page header.
+    doc.rect(0, 0, pageWidth, 118).fill(COLORS.navy);
+
+    doc
+      .roundedRect(left, 27, 48, 48, 10)
+      .fill(COLORS.orange);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(21)
+      .fillColor(COLORS.white)
+      .text("MS", left, 40, {
+        width: 48,
+        align: "center",
+      });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(19)
+      .fillColor(COLORS.white)
+      .text("Painting Works", 108, 30);
+
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor("#DCE5EF")
+      .text("PROFESSIONAL PAINTING SERVICES", 109, 56);
+
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor("#DCE5EF")
+      .text("QUALITY WORK  |  TRUSTED SERVICE", 109, 72);
+
+    // Estimate title and metadata.
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(23)
+      .fillColor(COLORS.navy)
+      .text("QUOTATION", left, 140);
+
+    doc
+      .roundedRect(395, 137, 152, 48, 7)
+      .fill(COLORS.light);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .fillColor(COLORS.muted)
+      .text("QUOTATION NO.", 405, 145);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(COLORS.navy)
+      .text(estimate.estimateNumber || "-", 405, 158, {
+        width: 132,
+      });
+
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .fillColor(COLORS.muted)
+      .text(`Date: ${dateFormat(estimate.createdAt)}`, left, 174);
+
+    doc
+      .moveTo(left, 198)
+      .lineTo(right, 198)
+      .lineWidth(0.8)
+      .strokeColor(COLORS.border)
+      .stroke();
+
+    // Client information.
+    let y = 215;
+
+    y = sectionTitle("PREPARED FOR / வாடிக்கையாளர் விவரம்", y);
+
+    text(client?.name || "-", left, y, {
+      bold: true,
+      size: 12,
+      color: COLORS.navy,
+    });
+
+    y += 21;
+
+    const contactParts = [
+      client?.phone,
+      client?.email,
+      client?.address,
+    ].filter(Boolean);
+
+    for (const value of contactParts) {
+      const height = doc.heightOfString(String(value), {
+        width: contentWidth,
+        font: "Tamil",
+        fontSize: 9,
+        lineGap: 2,
+      });
+
+      text(value, left, y, {
+        size: 9,
+        color: COLORS.muted,
+        width: contentWidth,
+      });
+
+      y += height + 5;
+    }
+
+    y += 14;
+
+    // Items table.
+    const drawTableHeader = () => {
+      doc
+        .roundedRect(left, y, contentWidth, 30, 5)
+        .fill(COLORS.navy);
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .fillColor(COLORS.white);
+
+      doc.text("DESCRIPTION", left + 10, y + 10, {
+        width: 220,
+      });
+
+      doc.text("AREA (SQ FT)", 295, y + 10, {
         width: 75,
         align: "right",
       });
-      doc.text(money(item.rate), 385, y + 11, { width: 55, align: "right" });
-      doc.text(money(item.amount), 455, y + 11, { width: 82, align: "right" });
-      y += 32;
-    });
-    y += 20;
-    const line = (label, value, bold = false) => {
-      doc
-        .fillColor(bold ? "#24364B" : "#64748B")
-        .font(bold ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(bold ? 12 : 9)
-        .text(label, 330, y, { width: 105 });
-      doc
-        .fillColor("#24364B")
-        .font(bold ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(bold ? 12 : 9)
-        .text(value, 435, y, { width: 102, align: "right" });
-      y += bold ? 28 : 19;
+
+      doc.text("RATE", 380, y + 10, {
+        width: 60,
+        align: "right",
+      });
+
+      doc.text("AMOUNT", 445, y + 10, {
+        width: 92,
+        align: "right",
+      });
+
+      y += 30;
     };
-    line("Subtotal", money(estimate.subtotal));
-    if (estimate.discountAmount)
-      line(
-        `Discount (${estimate.discountPercent}%)`,
-        `- ${money(estimate.discountAmount)}`,
+
+    drawTableHeader();
+
+    for (let i = 0; i < (estimate.items || []).length; i++) {
+      const item = estimate.items[i];
+
+      const description = String(item.description || "-");
+
+      const descriptionHeight = doc.heightOfString(description, {
+        width: 215,
+        font: "Tamil",
+        fontSize: 9,
+        lineGap: 2,
+      });
+
+      const rowHeight = Math.max(34, descriptionHeight + 16);
+
+      if (y + rowHeight > bottomLimit) {
+        doc.addPage();
+        y = 48;
+        drawTableHeader();
+      }
+
+      if (i % 2 === 0) {
+        doc
+          .rect(left, y, contentWidth, rowHeight)
+          .fill(COLORS.light);
+      }
+
+      text(description, left + 10, y + 9, {
+        size: 9,
+        width: 215,
+      });
+
+      text(
+        Number(item.area || 0).toLocaleString("en-IN"),
+        295,
+        y + 10,
+        {
+          size: 8,
+          width: 75,
+          align: "right",
+        }
       );
-    if (estimate.tax) line(`GST (${estimate.gstRate}%)`, money(estimate.tax));
-    doc
-      .moveTo(325, y - 5)
-      .lineTo(547, y - 5)
-      .strokeColor("#E5EAF0")
-      .stroke();
-    line("TOTAL AMOUNT", money(estimate.total), true);
-    y += 8;
-    if (estimate.notes) {
-      doc
-        .fillColor("#F47B35")
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("NOTES", 48, y);
-      y += 15;
-      doc
-        .fillColor("#475569")
-        .font("Helvetica")
-        .fontSize(9)
-        .text(estimate.notes, 48, y, { width: 490 });
-      y += doc.heightOfString(estimate.notes, { width: 490 }) + 12;
+
+      text(money(item.rate), 380, y + 10, {
+        size: 8,
+        width: 60,
+        align: "right",
+      });
+
+      text(money(item.amount), 445, y + 10, {
+        bold: true,
+        size: 8,
+        width: 92,
+        align: "right",
+      });
+
+      y += rowHeight;
     }
-    if (estimate.terms) {
+
+    y += 18;
+
+    // Totals panel.
+    const ensureSpace = (needed) => {
+      if (y + needed > bottomLimit) {
+        doc.addPage();
+        y = 48;
+      }
+    };
+
+    const totalLine = (label, value, bold = false) => {
+      ensureSpace(bold ? 36 : 24);
+
+      text(label, 315, y, {
+        bold,
+        size: bold ? 11 : 9,
+        color: bold ? COLORS.navy : COLORS.muted,
+        width: 120,
+      });
+
+      text(value, 435, y, {
+        bold: true,
+        size: bold ? 12 : 9,
+        color: COLORS.navy,
+        width: 102,
+        align: "right",
+      });
+
+      y += bold ? 31 : 22;
+    };
+
+    totalLine("Subtotal", money(estimate.subtotal));
+
+    if (Number(estimate.discountAmount) > 0) {
+      totalLine(
+        `Discount (${estimate.discountPercent || 0}%)`,
+        `- ${money(estimate.discountAmount)}`
+      );
+    }
+
+    if (Number(estimate.tax) > 0) {
+      totalLine(
+        `GST (${estimate.gstRate || 0}%)`,
+        money(estimate.tax)
+      );
+    }
+
+    ensureSpace(45);
+
+    doc
+      .roundedRect(305, y, 242, 43, 7)
+      .fill(COLORS.navy);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(COLORS.white)
+      .text("TOTAL AMOUNT", 317, y + 15);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .fillColor(COLORS.orange)
+      .text(money(estimate.total), 410, y + 14, {
+        width: 126,
+        align: "right",
+      });
+
+    y += 61;
+
+    // Notes and terms.
+    const renderLongSection = (heading, content) => {
+      if (!content) return;
+
+      y = sectionTitle(heading, y);
+
+      const paragraphs = String(content).split(/\r?\n/);
+
+      for (const paragraph of paragraphs) {
+        const value = paragraph.trim();
+
+        if (!value) {
+          y += 5;
+          continue;
+        }
+
+        const height = doc.heightOfString(value, {
+          width: contentWidth - 4,
+          font: "Tamil",
+          fontSize: 9,
+          lineGap: 3,
+        });
+
+        if (y + height + 8 > bottomLimit) {
+          doc.addPage();
+          y = 48;
+          y = sectionTitle(heading + " (CONTINUED)", y);
+        }
+
+        text(value, left + 2, y, {
+          size: 9,
+          width: contentWidth - 4,
+          color: COLORS.text,
+          lineGap: 3,
+        });
+
+        y += height + 8;
+      }
+
+      y += 12;
+    };
+
+    renderLongSection(
+      "NOTES / குறிப்புகள்",
+      estimate.notes
+    );
+
+    renderLongSection(
+      "TERMS & CONDITIONS / விதிமுறைகள்",
+      estimate.terms
+    );
+
+    // Add a footer to every page.
+    const range = doc.bufferedPageRange();
+
+    for (
+      let pageIndex = range.start;
+      pageIndex < range.start + range.count;
+      pageIndex++
+    ) {
+      doc.switchToPage(pageIndex);
+
+      const footerY = pageHeight - 43;
+
       doc
-        .fillColor("#F47B35")
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("TERMS & CONDITIONS", 48, y);
-      y += 15;
+        .moveTo(left, footerY - 8)
+        .lineTo(right, footerY - 8)
+        .lineWidth(0.6)
+        .strokeColor(COLORS.border)
+        .stroke();
+
       doc
-        .fillColor("#64748B")
         .font("Helvetica")
         .fontSize(8)
-        .text(estimate.terms, 48, y, { width: 490 });
+        .fillColor(COLORS.muted)
+        .text(
+          "Thank you for choosing MS Painting Works!",
+          left,
+          footerY,
+          {
+            width: contentWidth,
+            align: "center",
+          }
+        );
+
+      doc
+        .font("Helvetica")
+        .fontSize(7)
+        .fillColor(COLORS.muted)
+        .text(
+          `Page ${pageIndex + 1 - range.start} of ${range.count}`,
+          right - 65,
+          footerY + 13,
+          {
+            width: 65,
+            align: "right",
+          }
+        );
     }
-    doc
-      .fillColor("#94A3B8")
-      .fontSize(8)
-      .text(
-        "Thank you for considering MS Painting Works.",
-        48,
-        doc.page.height - 54,
-        { width: 499, align: "center" },
-      );
+
     doc.end();
   });
+
   return {
     filePath,
-    publicUrl: `${process.env.BACKEND_URL || "http://localhost:5000"}/uploads/estimates/${estimate.estimateNumber}.pdf`,
+    publicUrl: `${
+      process.env.BACKEND_URL || "http://localhost:5000"
+    }/uploads/estimates/${estimate.estimateNumber}.pdf`,
   };
 }
-function awaitImportFs() {
-  return fsSync;
-}
-import * as fsSync from "node:fs";
