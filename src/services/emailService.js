@@ -60,3 +60,90 @@ function escapeHtml(value = "") {
       ],
   );
 }
+
+// import { Resend } from "resend";
+// import { buildEstimateEmailHtml } from "./emailtemplate.js";
+
+// const resend = new Resend(process.env.RESEND_API_KEY);
+
+// export async function sendEstimateEmail({
+//   to,
+//   pdfUrl,
+//   estimateNumber,
+//   clientName = "Valued Customer",
+//   estimateDate = new Date(),
+//   totalAmount = 0,
+// }) {
+//   if (!process.env.RESEND_API_KEY) {
+//     throw new Error("RESEND_API_KEY is missing");
+//   }
+
+//   if (!process.env.EMAIL_FROM) {
+//     throw new Error("EMAIL_FROM is missing");
+//   }
+
+//   if (!to || !pdfUrl || !estimateNumber) {
+//     throw new Error(
+//       "Recipient, PDF URL and estimate number are required"
+//     );
+//   }
+
+//   // Download the existing Cloudinary PDF.
+//   const pdfResponse = await fetch(pdfUrl);
+
+//   if (!pdfResponse.ok) {
+//     throw new Error(
+//       `Failed to download estimate PDF: ${pdfResponse.status}`
+//     );
+//   }
+
+//   const pdfBuffer = Buffer.from(
+//     await pdfResponse.arrayBuffer()
+//   );
+
+//   const html = buildEstimateEmailHtml({
+//     clientName,
+//     estimateNumber,
+//     estimateDate,
+//     totalAmount,
+//     estimateUrl: pdfUrl,
+//   });
+
+//   const { data, error } = await resend.emails.send({
+//     from: process.env.EMAIL_FROM,
+//     to: [to],
+//     subject: `Your Painting Estimate | MS Painting Works`,
+//     html,
+//     text: `Hello ${clientName},
+
+// Thank you for choosing MS Painting Works.
+
+// Your painting estimate ${estimateNumber} is ready.
+// Estimated total: ₹${Number(totalAmount || 0).toLocaleString("en-IN", {
+//       minimumFractionDigits: 2,
+//       maximumFractionDigits: 2,
+//     })}
+
+// Please find your estimate PDF attached.
+
+// Thank you,
+// MS Painting Works`,
+//     attachments: [
+//       {
+//         filename: `Estimate-${estimateNumber}.pdf`,
+//         content: pdfBuffer,
+//         contentType: "application/pdf",
+//       },
+//     ],
+//   });
+
+//   if (error) {
+//     console.error("Resend email error:", error);
+//     throw new Error("Failed to send estimate email");
+//   }
+
+//   console.log("Estimate email accepted:", data?.id);
+
+//   return data;
+// }
+
