@@ -10,6 +10,12 @@ const app = express();
 app.use(cors({ origin: process.env.FRONTEND_URL || "https://mspaintsquotationmaker.netlify.app/" }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    message: "Backend is ready",
+  });
+});
 const uploads = path.resolve("uploads/estimates");
 fs.mkdirSync(uploads, { recursive: true });
 app.use("/uploads/estimates", express.static(uploads));
